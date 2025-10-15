@@ -1,4 +1,4 @@
-package ru.prilepskij.routinerangerbot;
+package ru.prilepskij.routinerangerbot.bot;
 
 
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -21,7 +21,7 @@ public class Bot extends TelegramLongPollingBot {
         var user = update.getMessage().getFrom();
         var userId = user.getId();
 
-        System.out.println(user.getFirstName() + "with ID:" + userId + " wrote " + msg.getText());
+        System.out.println(user.getFirstName() + " with ID:" + userId + " wrote " + msg.getText());
 
         if (update.hasMessage() && update.getMessage().hasText()) {
             sendMessage(userId, "Ты написал " + msg.getText());

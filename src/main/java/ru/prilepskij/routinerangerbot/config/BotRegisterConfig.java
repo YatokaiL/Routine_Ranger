@@ -1,4 +1,4 @@
-package ru.prilepskij.routinerangerbot;
+package ru.prilepskij.routinerangerbot.config;
 
 
 import jakarta.annotation.PostConstruct;
