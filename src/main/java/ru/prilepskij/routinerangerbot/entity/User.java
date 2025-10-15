@@ -32,6 +32,13 @@ public class User {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
     private List<Habit> habits = new ArrayList<>();
 
+    @Enumerated(EnumType.STRING)
+    private DialogState currentState = DialogState.IDLE;
+
+
+    private String tempHabitName;
+    private String tempDescription;
+
     @Override
     public String toString() {
         return "User with db_id: " + id + " tg_id: " + chatId + " username: " + username + " registration date: " + registrationDate;

@@ -28,4 +28,8 @@ public class UserService {
             return userRepository.save(newUser);
         }
     }
+
+    public User save(User user) {
+        return userRepository.save(user);
+    }
 }
