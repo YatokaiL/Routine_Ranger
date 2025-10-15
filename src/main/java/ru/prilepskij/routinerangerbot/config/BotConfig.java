@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import ru.prilepskij.routinerangerbot.bot.Bot;
+import ru.prilepskij.routinerangerbot.service.UserService;
 
 @Configuration
 public class BotConfig {
@@ -14,7 +15,7 @@ public class BotConfig {
     private String token;
 
     @Bean
-    public TelegramLongPollingBot myBot() {
-        return new Bot(token);
+    public TelegramLongPollingBot myBot(UserService userService) {
+        return new Bot(token, userService);
     }
 }
