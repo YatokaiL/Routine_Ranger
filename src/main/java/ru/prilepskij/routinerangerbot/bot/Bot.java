@@ -2,7 +2,11 @@ package ru.prilepskij.routinerangerbot.bot;
 
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.prilepskij.routinerangerbot.entity.DialogState;
 import ru.prilepskij.routinerangerbot.entity.Habit;
@@ -10,7 +14,10 @@ import ru.prilepskij.routinerangerbot.entity.User;
 import ru.prilepskij.routinerangerbot.service.HabitService;
 import ru.prilepskij.routinerangerbot.service.UserService;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Bot extends TelegramLongPollingBot {
 
@@ -25,6 +32,11 @@ public class Bot extends TelegramLongPollingBot {
 
     @Override
     public void onUpdateReceived(Update update) {
+
+        if (update.hasCallbackQuery()){
+            handleCallbackQuery(update.getCallbackQuery());
+            return;
+        }
         if (update.getMessage() != null && update.getMessage().hasText()) {
             Long chatId = update.getMessage().getChatId();
             String username = update.getMessage().getFrom().getUserName();
@@ -40,12 +52,41 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
+    private void handleCallbackQuery(CallbackQuery callbackQuery) {
+        String callbackData = callbackQuery.getData();
+        Long chatId = callbackQuery.getMessage().getChatId();
+        User user = userService.findOrCreateUser(chatId, callbackQuery.getFrom().getUserName());
+
+        if (callbackData.startsWith("done_")) {
+            Long habitId = Long.parseLong(callbackData.substring(5));
+
+            Habit habit = habitService.findHabitById(habitId)
+                    .orElseThrow(() -> new RuntimeException("Привычка не найдена"));
+
+            habitService.markHabitAsDone(habit, LocalDate.now());
+
+            EditMessageText editMessage = new EditMessageText();
+            editMessage.setChatId(chatId.toString());
+            editMessage.setMessageId(callbackQuery.getMessage().getMessageId());
+            editMessage.setText("✅ Привычка '" + habit.getName() + "' выполнена!");
+
+            try {
+                execute(editMessage);
+            } catch (TelegramApiException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     private void handleCommands(User user, String text) {
         if ("/start".equals(text)) {
             handleStartCommand(user);
         } else if (text.startsWith("/newhabit")) {
             handleNewHabitStart(user, text);
-        } else {
+        } else if (text.startsWith("/done")){
+            handleDoneHabit(user, text);
+        }
+        else {
             sendMessage(user.getChatId(), "Неизвестная команда. Используйте /start для начала работы.");
         }
     }
@@ -78,6 +119,61 @@ public class Bot extends TelegramLongPollingBot {
         }
     }
 
+    private void handleDoneHabit(User user,  String text) {
+        int firstSpace = text.indexOf(' ');
+        if (firstSpace > 0) {
+            String habitName = text.substring(firstSpace).trim();
+            List<Habit> habits = habitService.getUserHabitsByHabitName(user, habitName);
+
+            if (habits.isEmpty()) {
+                sendMessage(user.getChatId(), "Привычка не найдена 😔");
+            } else if (habits.size() == 1) {
+                habitService.markHabitAsDone(habits.get(0), LocalDate.now());
+                sendMessage(user.getChatId(), "✅ Привычка '" + habits.get(0).getName() + "' выполнена!");
+            } else {
+                sendHabitSelectionButtons(user, habits);
+            }
+
+        }
+        else {
+            sendMessage(user.getChatId(), "Пожалуйста, укажите название привычки: /done [название]");
+        }
+
+
+    }
+
+    private void sendHabitSelectionButtons(User user, List<Habit> habits) {
+
+        SendMessage sendMessage = new SendMessage();
+        sendMessage.setChatId(user.getChatId());
+        sendMessage.setText("\"Выберите привычку для отметки:");
+
+
+        InlineKeyboardMarkup keyboardMarkup = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+
+        for (Habit habit : habits) {
+            InlineKeyboardButton button = new InlineKeyboardButton();
+            button.setText(habit.getName());
+            button.setCallbackData("done_" + habit.getId()); // уникальный идентификатор
+
+            List<InlineKeyboardButton> row = new ArrayList<>();
+            row.add(button);
+            rows.add(row);
+        }
+
+        keyboardMarkup.setKeyboard(rows);
+        sendMessage.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(sendMessage);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
     private void handleDescriptionInput(User user, String text) {
         if ("/skip".equals(text)) {
             user.setTempDescription(null);
@@ -102,7 +198,6 @@ public class Bot extends TelegramLongPollingBot {
             }
         }
 
-        // Создаем привычку
         Habit habit = habitService.createHabit(
                 user,
                 user.getTempHabitName(),
@@ -110,7 +205,6 @@ public class Bot extends TelegramLongPollingBot {
                 reminderTime
         );
 
-        // Сбрасываем состояние и временные данные
         user.setCurrentState(DialogState.IDLE);
         user.setTempHabitName(null);
         user.setTempDescription(null);
