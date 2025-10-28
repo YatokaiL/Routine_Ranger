@@ -49,12 +49,15 @@ public class HabitService {
         return habitEntryRepository.save(habitEntry);
     }
 
-
     public List<Habit> getUserHabits(User user) {
         return habitRepository.findByUser(user);
     }
 
     public Optional<Habit> findHabitById(Long habitId) {
         return habitRepository.findById(habitId);
+    }
+
+    public Optional<HabitEntry> getHabitEntryForDate(Habit habit, LocalDate date) {
+        return habitEntryRepository.findByHabitAndDate(habit, date);
     }
 }

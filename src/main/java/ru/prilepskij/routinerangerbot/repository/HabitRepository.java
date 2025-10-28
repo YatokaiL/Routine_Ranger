@@ -8,4 +8,5 @@ import java.util.List;
 public interface HabitRepository extends JpaRepository<Habit, Long> {
     List<Habit> findByUser(User user);
     List<Habit> findByUserAndNameContainingIgnoreCase(User user, String name);
+    List<Habit> findByIsActiveTrue();
 }
