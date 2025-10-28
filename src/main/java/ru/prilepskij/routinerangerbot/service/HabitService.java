@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import ru.prilepskij.routinerangerbot.entity.Habit;
 import ru.prilepskij.routinerangerbot.entity.HabitEntry;
+import ru.prilepskij.routinerangerbot.entity.RemindDays;
 import ru.prilepskij.routinerangerbot.entity.User;
 import ru.prilepskij.routinerangerbot.repository.HabitEntryRepository;
 import ru.prilepskij.routinerangerbot.repository.HabitRepository;
@@ -22,13 +23,16 @@ public class HabitService {
     private final HabitEntryRepository habitEntryRepository;
 
 
-    public Habit createHabit(User user, String name, String description, LocalTime reminderTime) {
+    public Habit createHabit(User user, String name, String description,
+                             LocalTime reminderTime, RemindDays remindDays, Boolean isActive) {
         Habit habit = new Habit();
         habit.setName(name);
         habit.setDescription(description);
         habit.setUser(user);
         habit.setCreationDate(LocalDate.now());
         habit.setReminderTime(reminderTime);
+        habit.setRemindDays(remindDays);
+        habit.setIsActive(isActive);
 
         return habitRepository.save(habit);
     }

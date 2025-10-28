@@ -28,12 +28,16 @@ public class Habit {
     @Column(name = "remind_time")
     private LocalTime reminderTime;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "remind_type")
-    private RemindType reminderDays;
-
     @Column(name = "creation_date")
     private LocalDate creationDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "remind_days")
+    private RemindDays remindDays;
+
+    @Column(name = "active")
+    private Boolean isActive;
+
 
 
 }

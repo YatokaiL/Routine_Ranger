@@ -10,6 +10,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKe
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import ru.prilepskij.routinerangerbot.entity.DialogState;
 import ru.prilepskij.routinerangerbot.entity.Habit;
+import ru.prilepskij.routinerangerbot.entity.RemindDays;
 import ru.prilepskij.routinerangerbot.entity.User;
 import ru.prilepskij.routinerangerbot.service.HabitService;
 import ru.prilepskij.routinerangerbot.service.UserService;
@@ -57,24 +58,37 @@ public class Bot extends TelegramLongPollingBot {
         Long chatId = callbackQuery.getMessage().getChatId();
         User user = userService.findOrCreateUser(chatId, callbackQuery.getFrom().getUserName());
 
-        if (callbackData.startsWith("done_")) {
-            Long habitId = Long.parseLong(callbackData.substring(5));
+        try {
+            if (callbackData.startsWith("done_")) {
+                Long habitId = Long.parseLong(callbackData.substring(5));
 
-            Habit habit = habitService.findHabitById(habitId)
-                    .orElseThrow(() -> new RuntimeException("Привычка не найдена"));
+                Habit habit = habitService.findHabitById(habitId)
+                        .orElseThrow(() -> new RuntimeException("Привычка не найдена"));
 
-            habitService.markHabitAsDone(habit, LocalDate.now());
+                habitService.markHabitAsDone(habit, LocalDate.now());
 
-            EditMessageText editMessage = new EditMessageText();
-            editMessage.setChatId(chatId.toString());
-            editMessage.setMessageId(callbackQuery.getMessage().getMessageId());
-            editMessage.setText("✅ Привычка '" + habit.getName() + "' выполнена!");
+                EditMessageText editMessage = new EditMessageText();
+                editMessage.setChatId(chatId.toString());
+                editMessage.setMessageId(callbackQuery.getMessage().getMessageId());
+                editMessage.setText("✅ Привычка '" + habit.getName() + "' выполнена!");
 
-            try {
                 execute(editMessage);
-            } catch (TelegramApiException e) {
-                throw new RuntimeException(e);
             }
+            else if (callbackData.startsWith("days_")) {
+                String daysType = callbackData.substring(5); // "DAILY", "WORKDAYS", "WEEKENDS"
+                RemindDays remindDays = RemindDays.valueOf(daysType);
+
+                completeHabitCreation(user, remindDays);
+
+                EditMessageText editMessage = new EditMessageText();
+                editMessage.setChatId(chatId.toString());
+                editMessage.setMessageId(callbackQuery.getMessage().getMessageId());
+                editMessage.setText("✅ Привычка создана! Напоминания: " + getDaysDescription(remindDays));
+
+                execute(editMessage);
+            }
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -96,12 +110,29 @@ public class Bot extends TelegramLongPollingBot {
             case DialogState.AWAITING_HABIT_DESCRIPTION:
                 handleDescriptionInput(user, text);
                 break;
-            case DialogState.AWAITING_HABIT_TIME:
+            case DialogState.AWAITING_TIME:
                 handleTimeInput(user, text);
+                break;
+            case AWAITING_DAYS:  
+                handleDaysInput(user, text); 
                 break;
             default:
                 user.setCurrentState(DialogState.IDLE);
                 userService.save(user);
+        }
+    }
+
+    private void handleDaysInput(User user, String text) {
+        if ("/cancel".equals(text)) {
+            user.setCurrentState(DialogState.IDLE);
+            user.setTempHabitName(null);
+            user.setTempDescription(null);
+            user.setTempReminderTime(null);
+            userService.save(user);
+            sendMessage(user.getChatId(), "Создание привычки отменено");
+        } else {
+            sendMessage(user.getChatId(), "Пожалуйста, используйте кнопки для выбора дней или /cancel для отмены");
+            sendDaysSelectionKeyboard(user.getChatId());
         }
     }
 
@@ -181,7 +212,7 @@ public class Bot extends TelegramLongPollingBot {
             user.setTempDescription(text);
         }
 
-        user.setCurrentState(DialogState.AWAITING_HABIT_TIME);
+        user.setCurrentState(DialogState.AWAITING_TIME);
         userService.save(user);
         sendMessage(user.getChatId(), "Во сколько напоминать? (формат ЧЧ:ММ или /skip):");
     }
@@ -198,23 +229,53 @@ public class Bot extends TelegramLongPollingBot {
             }
         }
 
-        Habit habit = habitService.createHabit(
-                user,
-                user.getTempHabitName(),
-                user.getTempDescription(),
-                reminderTime
-        );
-
-        user.setCurrentState(DialogState.IDLE);
-        user.setTempHabitName(null);
-        user.setTempDescription(null);
+        user.setTempReminderTime(reminderTime);
+        user.setCurrentState(DialogState.AWAITING_DAYS);
         userService.save(user);
 
-        String message = "Привычка '" + habit.getName() + "' успешно создана!";
-        if (reminderTime != null) {
-            message += "\nНапоминание установлено на: " + reminderTime;
+        sendDaysSelectionKeyboard(user.getChatId());
+    }
+
+    private void sendDaysSelectionKeyboard(Long chatId) {
+        String messageText = """
+        📅 Выберите дни напоминания:
+        
+        🌅 Ежедневно - каждый день в одно время
+        🏢 По будням - с понедельника по пятницу  
+        🏖️ По выходным - суббота и воскресенье
+        """;
+
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText(messageText);
+
+        InlineKeyboardMarkup keyboard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> rows = new ArrayList<>();
+
+        InlineKeyboardButton dailyBtn = new InlineKeyboardButton();
+        dailyBtn.setText("🌅 Ежедневно");
+        dailyBtn.setCallbackData("days_DAILY");
+
+        InlineKeyboardButton workdaysBtn = new InlineKeyboardButton();
+        workdaysBtn.setText("🏢 По будням");
+        workdaysBtn.setCallbackData("days_WORKDAYS");
+
+        InlineKeyboardButton weekendsBtn = new InlineKeyboardButton();
+        weekendsBtn.setText("🏖️ По выходным");
+        weekendsBtn.setCallbackData("days_WEEKENDS");
+
+        rows.add(List.of(dailyBtn));
+        rows.add(List.of(workdaysBtn));
+        rows.add(List.of(weekendsBtn));
+
+        keyboard.setKeyboard(rows);
+        message.setReplyMarkup(keyboard);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
         }
-        sendMessage(user.getChatId(), message);
     }
 
     private void handleStartCommand(User user) {
@@ -233,6 +294,33 @@ public class Bot extends TelegramLongPollingBot {
             """;
 
         sendMessage(user.getChatId(), welcomeMessage);
+    }
+
+    private void completeHabitCreation(User user, RemindDays remindDays) {
+        Habit habit = habitService.createHabit(
+                user,
+                user.getTempHabitName(),
+                user.getTempDescription(),
+                user.getTempReminderTime(),
+                remindDays,
+                true
+        );
+
+        user.setCurrentState(DialogState.IDLE);
+        user.setTempHabitName(null);
+        user.setTempDescription(null);
+        user.setTempReminderTime(null);
+        userService.save(user);
+    }
+
+    private String getDaysDescription(RemindDays remindDays) {
+        return switch(remindDays) {
+            case DAILY -> "каждый день";
+            case WORKDAYS -> "по будням";
+            case WEEKENDS -> "по выходным";
+            case CUSTOM -> "выбранные дни";
+            default -> "не указано";
+        };
     }
 
     @Override
